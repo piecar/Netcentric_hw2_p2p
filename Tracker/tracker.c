@@ -12,7 +12,7 @@
 
 void syserr(char *msg) { perror(msg); exit(-1); }
 void readandsend(int tempfd, int newsockfd, char* buffer);
-void trccomm(void * s);
+void * trccomm(void * s);
 void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 //Shared List
 typedef struct l {
@@ -28,7 +28,7 @@ pthread_t pthread; //peer thread
 //Thread struct
 typedef struct s {
    int nsock;
-   struct sockaddr* clientInfo;
+   struct sockaddr_in* clientInfo;
 } sockStruct;
    
 
@@ -72,7 +72,7 @@ for(;;) {
   sockStruct * s;
   s = (sockStruct *)malloc(sizeof(sockStruct));
   s -> nsock = newsockfd;
-  s -> clientInfo = (struct sockaddr*)&clt_addr;
+  s -> clientInfo = &clt_addr;
   
   pthread_mutex_init(&llock, NULL); 
   if(pthread_create(&pthread, NULL, trccomm, (void *) s))
@@ -83,7 +83,7 @@ for(;;) {
   return 0;
 }
 
-void trccomm(void * s)
+void * trccomm(void * s)
 {
 	int n, size, tempfd, newsockfd, clientPort;
 	uint32_t clientIP;
@@ -93,9 +93,11 @@ void trccomm(void * s)
     char buffer[256];
 	filename = malloc(sizeof(char)*BUFFSIZE);
 	
-	newsockfd = s -> nsock;
-	clientIP = s -> clientInfo -> in_addr -> s_addr;
-	clientPort = s -> clientInfo -> sin_port;
+	//Thread struct operations
+	sockStruct* sCInfo = (sockStruct *) s;
+	newsockfd = sCInfo -> nsock;
+	clientIP = sCInfo -> clientInfo -> sin_addr.s_addr;
+	clientPort = sCInfo -> clientInfo -> sin_port;
 	
 	for(;;)
 	{
@@ -172,6 +174,7 @@ void trccomm(void * s)
 			close(tempfd);
 		}
 	}
+	return 0;
 }
 
 void readandsend(int tempfd, int newsockfd, char* buffer)
