@@ -20,8 +20,14 @@ typedef struct l {
   char * filename; //Tallies which slots are being used
   uint32_t clientIP;
   int portnum;
-  struct fileList* fl_next;
+  struct l * fl_next;
 } fileList;
+
+fileList * head = NULL;
+fileList * curr = NULL;
+fileList * tail = NULL;
+int listLen = 0;
+
 pthread_mutex_t llock; // List Lock
 pthread_t pthread; //peer thread
 
@@ -37,9 +43,7 @@ int main(int argc, char *argv[])
   int sockfd, newsockfd, portno;
   struct sockaddr_in serv_addr, clt_addr;
   socklen_t addrlen;
-  fileList * head, curr, tail;
-  head = curr = tail = NULL;
-  int listLen = 0;
+
   
 
   if(argc != 2) 
@@ -124,7 +128,7 @@ void * trccomm(void * s)
 		}
 		else
 		{
-		  tail -> next = curr;
+		  tail -> fl_next = curr;
 		  tail = curr;
 		  listLen++;
 		}			
