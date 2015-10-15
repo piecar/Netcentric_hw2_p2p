@@ -37,6 +37,10 @@ int main(int argc, char *argv[])
   int sockfd, newsockfd, portno;
   struct sockaddr_in serv_addr, clt_addr;
   socklen_t addrlen;
+  fileList * head, curr, tail;
+  head = curr = tail = NULL;
+  int listLen = 0;
+  
 
   if(argc != 2) 
   { 
@@ -99,6 +103,34 @@ void * trccomm(void * s)
 	clientIP = sCInfo -> clientInfo -> sin_addr.s_addr;
 	clientPort = sCInfo -> clientInfo -> sin_port;
 	
+	//Populate list with client files, IP and port
+	pthread_mutex_lock(&llock);
+	for(;;)
+	{
+	    memset(buffer, 0, BUFFSIZE);
+		n = recv(newsockfd, buffer, BUFFSIZE, 0);
+		if(n < 0) syserr("can't receive from client");
+		if(strcmp(buffer, "EndOfList") != 0) break;
+		curr = (fileList *)malloc(sizeof(fileList));
+		curr -> clientIP = clientIP;
+		curr -> portnum = clientPort;
+		strcpy(curr -> filename, buffer);
+		
+		if(tail == NULL)
+		{
+		  tail = curr;
+		  head = curr;
+		  listLen++;
+		}
+		else
+		{
+		  tail -> next = curr;
+		  tail = curr;
+		  listLen++;
+		}			
+	}
+	pthread_mutex_unlock(&llock);
+	
 	for(;;)
 	{
 	    memset(buffer, 0, BUFFSIZE);
@@ -108,20 +140,30 @@ void * trccomm(void * s)
 		sscanf(buffer, "%s", command);
 		//printf("message from client is: %s\n", buffer);
 		
-		if(strcmp(command, "ls") == 0)
+		if(strcmp(command, "list") == 0)
 		{
-			system("ls >remotelist.txt");
-			stat("remotelist.txt", &filestats);
-			size = filestats.st_size;
-			//printf("Size of file to send: %d\n", size);
-            size = htonl(size);      
+			pthread_mutex_lock(&llock);
+            size = htonl(listLen);      
 			n = send(newsockfd, &size, sizeof(int), 0);
-		    if(n < 0) syserr("couldn't send size to client");
-			//printf("The amount of bytes sent for filesize is: %d\n", n);
-			tempfd = open("remotelist.txt", O_RDONLY);
-			if(tempfd < 0) syserr("failed to get file, server side");
-			readandsend(tempfd, newsockfd, buffer);
-			close(tempfd);			
+		    if(n < 0) syserr("couldn't send listLen to client");
+		    curr = head;
+			while(curr)
+			{
+				memset(buffer, 0, BUFFSIZE);
+				strcpy(buffer, curr -> filename);
+				n = send(newsockfd, &buffer, BUFFSIZE, 0);
+		    	if(n < 0) syserr("couldn't send filename to client");
+				int cIP = htonl(clientIP); 
+				n = send(newsockfd, &cIP, sizeof(uint32_t), 0);
+		    	if(n < 0) syserr("couldn't send clientIP to client");
+				int cP = htonl(clientPort); 
+				n = send(newsockfd, &cP, sizeof(int), 0);
+		    	if(n < 0) syserr("couldn't send clientIP to client");
+		    	
+		    	curr = curr -> fl_next;
+			}
+			//readandsend(tempfd, newsockfd, buffer);
+			//close(tempfd);			
 		}
 		
 		if(strcmp(command, "exit") == 0)
