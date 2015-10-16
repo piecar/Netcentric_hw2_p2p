@@ -35,7 +35,6 @@ int main(int argc, char* argv[])
   server = gethostbyname(argv[1]);
   if(!server) {
     fprintf(stderr, "ERROR: no such host: %s\n", argv[1]);
-    return 2;
   }
   portno = atoi(argv[2]);
 

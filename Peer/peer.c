@@ -15,6 +15,7 @@
 void syserr(char *msg) { perror(msg); exit(-1); }
 void ftpcomm(int newsockfd, char* buffer);
 void ClientCode(char *trackIP, int portTrac);
+void peer2peer(uint32_t cIP, int cP, char * filen);
 void readandsend(int tempfd, int newsockfd, char* buffer);
 void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 //List of files
@@ -57,11 +58,11 @@ int main(int argc, char *argv[])
   memset(&serv_addr, 0, sizeof(serv_addr));
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;
-  serv_addr.sin_port = htons(portTrac);
+  serv_addr.sin_port = htons(portClient);
 
   if(bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) 
     syserr("can't bind");
-  printf("bind socket to port %d...\n", portTrac);
+  printf("bind socket to port %d...\n", portClient);
 
   listen(sockfd, 5);
   hasClientRun = 0; 
@@ -80,14 +81,14 @@ for(;;) {
    	}
    	else
    	{
-	  	printf("wait on port %d...\n", portTrac);
+	  	printf("wait on port %d...\n", portClient);
 	  	addrlen = sizeof(clt_addr); 
 	  	newsockfd = accept(sockfd, (struct sockaddr*)&clt_addr, &addrlen);
 	  	if(newsockfd < 0) syserr("can't accept"); 
 		close(sockfd);
 		ftpcomm(newsockfd, buffer);
 		close(newsockfd);
-		exit(0);
+		//exit(0);
      }
    }
 }
@@ -100,83 +101,36 @@ void ftpcomm(int newsockfd, char* buffer)
 	int n, size, tempfd;
     struct stat filestats;
 	char * filename;
-	char command[20];
 	filename = malloc(sizeof(char)*BUFFSIZE);
-	for(;;)
-	{
-	    memset(buffer, 0, BUFFSIZE);
-		n = recv(newsockfd, buffer, BUFFSIZE, 0);
-		//printf("amount of data recieved: %d\n", n);
-		if(n < 0) syserr("can't receive from client");
-		sscanf(buffer, "%s", command);
-		//printf("message from client is: %s\n", buffer);
-		
-		if(strcmp(command, "ls") == 0)
-		{
-			system("ls >remotelist.txt");
-			stat("remotelist.txt", &filestats);
-			size = filestats.st_size;
-			//printf("Size of file to send: %d\n", size);
-            size = htonl(size);      
-			n = send(newsockfd, &size, sizeof(int), 0);
-		    if(n < 0) syserr("couldn't send size to client");
-			//printf("The amount of bytes sent for filesize is: %d\n", n);
-			tempfd = open("remotelist.txt", O_RDONLY);
-			if(tempfd < 0) syserr("failed to get file, server side");
-			readandsend(tempfd, newsockfd, buffer);
-			close(tempfd);			
-		}
-		
-		if(strcmp(command, "exit") == 0)
-		{
-			printf("Connection to client shutting down\n");
-			int i = 1;
-			i = htonl(i);
-			n = send(newsockfd, &i, sizeof(int), 0);
-		    if(n < 0) syserr("didn't send exit signal to client");
-			break;  // check to make sure it doesn't need to be exit
-		}
-		
-		if(strcmp(command, "get") == 0)
-		{
-			sscanf(buffer, "%*s%s", filename);
-			//printf("filename from client is: %s\n", filename);
-			//printf("size of filename is: %lu\n", sizeof(filename));
-			stat(filename, &filestats);
-			size = filestats.st_size;
-			//printf("Size of file to send: %d\n", size);
-            size = htonl(size);      
-			n = send(newsockfd, &size, sizeof(int), 0);
-		    if(n < 0) syserr("couldn't send size to client");
-			//printf("The amount of bytes sent for filesize is: %d\n", n);
-			tempfd = open(filename, O_RDONLY);
-			if(tempfd < 0) syserr("failed to open file");
-			readandsend(tempfd, newsockfd, buffer);
-			close(tempfd);			
-		}
-		if(strcmp(command, "put") == 0)
-		{
-			//Parse filename
-			sscanf(buffer, "%*s%s", filename);
-			//printf("filename from client is: %s\n", filename);
-			//printf("size of filename is: %lu\n", sizeof(filename));
-			//Receieve size of file
-			n = recv(newsockfd, &size, sizeof(int), 0); 
-        	if(n < 0) syserr("can't receive from server");
-        	size = ntohl(size);        
-			if(size ==0) // check if file exists
-			{
-				printf("File not found\n");
-				break;
-			}
-			//printf("The size of the file to recieve is: %d\n", size);
-			//Receieve the file
-			tempfd = open(filename, O_CREAT | O_WRONLY, 0666);
-			if(tempfd < 0) syserr("failed to open the file");
-			recvandwrite(tempfd, newsockfd, size, buffer);
-			close(tempfd);
-		}
-	}
+	
+	//Receive file name
+    memset(buffer, 0, BUFFSIZE);
+	n = recv(newsockfd, buffer, BUFFSIZE, 0);
+	//printf("amount of data recieved: %d\n", n);
+	if(n < 0) syserr("can't receive filename from peer");
+	sscanf(buffer, "%s", filename);
+	//printf("filename from client is: %s\n", filename);
+	//printf("size of filename is: %lu\n", sizeof(filename));
+	
+	//Send file size and file to peer
+	stat(filename, &filestats);
+	size = filestats.st_size;
+	//printf("Size of file to send: %d\n", size);
+    size = htonl(size);      
+	n = send(newsockfd, &size, sizeof(int), 0);
+    if(n < 0) syserr("couldn't send size to peer");
+	//printf("The amount of bytes sent for filesize is: %d\n", n);
+	tempfd = open(filename, O_RDONLY);
+	if(tempfd < 0) syserr("failed to open file");
+	readandsend(tempfd, newsockfd, buffer);
+	close(tempfd);
+	
+	//Close the connection to peer	
+	printf("Connection to client shutting down\n");
+	int i = 1;
+	i = htonl(i);
+	n = send(newsockfd, &i, sizeof(int), 0);
+    if(n < 0) syserr("didn't send exit signal to client");
 }
 
 void ClientCode(char *trackHost, int portTrac)
@@ -227,6 +181,7 @@ void ClientCode(char *trackHost, int portTrac)
   	{
   		memset(buffer, 0, sizeof(buffer));
   		strcpy(buffer, filesInfo -> d_name);
+  		printf("File sent to tracker: %s> ", filesInfo -> d_name);
 		n = send(socksfd, buffer, BUFFSIZE, 0);
 		if(n < 0) syserr("can't send filename to tracker");  		
   	}
@@ -299,7 +254,9 @@ void ClientCode(char *trackHost, int portTrac)
         curr = head;
         for(i=1; i<=listLen; i++)
         {
-        	printf("[%d] %s %d:%d\n", i, curr -> filename, curr -> clientIP, curr -> portnum);
+        	char peerAddr[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &cIP, peerAddr, INET_ADDRSTRLEN);
+        	printf("[%d] %s %s:%d\n", i, curr -> filename, peerAddr, curr -> portnum);
         	curr = curr -> fl_next;
         }
   	}
@@ -327,59 +284,21 @@ void ClientCode(char *trackHost, int portTrac)
 		}
 		
   	} 	
-  	else if(strcmp(command, "get") == 0)
+  	else if(strcmp(command, "download") == 0)
   	{
+  		//Get input, search for file
   		strcpy(filename, strtok(NULL, " "));
   		//printf("The filename is: %s\n", filename);
-  		memset(buffer, 0, sizeof(buffer));
-  		strcpy(buffer, "get ");
-  		strcat(buffer, filename);
-		//printf("sent in buffer: %s\n", buffer);
-		n = send(socksfd, buffer, BUFFSIZE, 0);
-		//printf("amount of data sent: %d\n", n);
-		if(n < 0) syserr("can't send to server");
-		n = recv(socksfd, &size, sizeof(int), 0); 
-        if(n < 0) syserr("can't receive from server");
-        size = ntohl(size);        
-		if(size ==0) // check if file exists
-		{
-			printf("File not found\n");
-			break;
-		}
-		//printf("The size of the file to recieve is: %d\n", size);
-		tempfd = open(filename, O_CREAT | O_WRONLY, 0666);
-		if(tempfd < 0) syserr("failed to get file");
-		recvandwrite(tempfd, socksfd, size, buffer);
-		printf("Download of '%s' was successful\n", filename);  
-		close(tempfd);
-		
-  	}
-  	else if(strcmp(command, "put") == 0)
-  	{
-  		//Send command & filename
-  		strcpy(filename, strtok(NULL, " "));
-  		memset(buffer, 0, BUFFSIZE);
-  		strcpy(buffer, "put ");
-  		strcat(buffer, filename);
-  		//printf("The filename to send to server is: %s\n", filename);
-		n = send(socksfd, buffer, BUFFSIZE, 0);
-		//printf("amount of data sent: %d\n", n);
-		if(n < 0) syserr("can't send to server");
-		//printf("sent in buffer: %s\n", buffer);
-		//Send file size
-		stat(filename, &filestats);
-		size = filestats.st_size;
-		//printf("Size of file to send: %d\n", size);
-        size = htonl(size);      
-		n = send(socksfd, &size, sizeof(int), 0);
-		if(n < 0) syserr("couldn't send size to server");
-		//Send file
-		tempfd = open(filename, O_RDONLY);
-		if(tempfd < 0) syserr("failed to get file, server side");
-		readandsend(tempfd, socksfd, buffer);
-		printf("Upload of '%s' was successful\n", filename); 
-		close(tempfd);	
-  	}
+  		int index = atoi(filename);
+  		if(listLen <= index) syserr("Index too large for list");
+  		curr = head;
+  		int j;
+  		for(j=1; j<index; j++)
+  		{
+  			curr = curr -> fl_next;
+  		}
+  		peer2peer(curr -> clientIP, curr -> portnum, curr -> filename);
+  	} 
   	else
   	{
   		printf("Correct commmands are: 'ls-local', 'ls-remote', 'get <filename>' and 				'put <filename>, 'exit''\n");
@@ -387,6 +306,84 @@ void ClientCode(char *trackHost, int portTrac)
   }
   close(socksfd);
 }
+
+void peer2peer(uint32_t cIP, int cP, char * filen)
+{
+	int sockfd, portno, n, size, tempfd;
+	char input[70];
+	char *filename;
+	struct hostent* server; // server info
+	struct sockaddr_in serv_addr; //server address info
+	struct stat filestats;
+	char buffer[256];
+	char peerAddr[INET_ADDRSTRLEN];
+	filename = malloc(sizeof(char)*sizeof(buffer));
+	
+	//Convert clientIP to standard dot notation
+	inet_ntop(AF_INET, &cIP, peerAddr, INET_ADDRSTRLEN);
+	
+	server = gethostbyname(peerAddr);
+	if(!server) {
+		fprintf(stderr, "ERROR: no such host: %s\n", peerAddr);
+		return;
+	}
+	portno = cP;
+
+	sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // check man page
+	if(sockfd < 0) syserr("can't open socket");
+	printf("create socket...\n");
+
+	// set all to zero, then update the sturct with info
+	memset(&serv_addr, 0, sizeof(serv_addr)); 
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr = *((struct in_addr*)server->h_addr);
+	serv_addr.sin_port = htons(portno); 	
+
+	// connect with filde descriptor, server address and size of addr
+	if(connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
+	syserr("can't connect to server");
+	printf("connect...\n");
+	printf("Connection established. Waiting for commands...\n");
+	
+	//Get the file
+	memset(buffer, 0, sizeof(buffer));
+	strcpy(buffer, filename);
+	//printf("sent in buffer: %s\n", buffer);
+	n = send(sockfd, buffer, BUFFSIZE, 0);
+	//printf("amount of data sent: %d\n", n);
+	if(n < 0) syserr("can't send filename to peer");
+	n = recv(sockfd, &size, sizeof(int), 0); 
+    if(n < 0) syserr("can't receive size of file from peer");
+    size = ntohl(size);        
+	if(size ==0) // check if file exists
+	{
+		printf("File not found at peer\n");
+		return;
+	}
+	//printf("The size of the file to recieve is: %d\n", size);
+	tempfd = open(filename, O_CREAT | O_WRONLY, 0666);
+	if(tempfd < 0) syserr("failed to get file");
+	recvandwrite(tempfd, sockfd, size, buffer);
+	printf("Download of '%s' was successful\n", filename);  
+	close(tempfd);
+	
+	//Close connection
+	n = recv(sockfd, &size, sizeof(int), 0);
+    size = ntohl(size);  
+    if(n < 0) syserr("can't receive exit signal from server");
+    
+	//printf("size was %d from server\n", size);
+	if(size)
+	{
+		printf("Connection to server terminated\n");
+		exit(0);
+	}
+	else
+	{
+		printf("Server didn't exit");
+	}	
+}
+
 void readandsend(int tempfd, int newsockfd, char* buffer)
 {
 	while (1)

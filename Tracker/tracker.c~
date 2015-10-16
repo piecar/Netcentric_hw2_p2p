@@ -42,9 +42,7 @@ int main(int argc, char *argv[])
 {
   int sockfd, newsockfd, portno;
   struct sockaddr_in serv_addr, clt_addr;
-  socklen_t addrlen;
-
-  
+  socklen_t addrlen;  
 
   if(argc != 2) 
   { 
@@ -115,7 +113,7 @@ void * trccomm(void * s)
 		
 	    memset(buffer, 0, BUFFSIZE);
 		n = recv(newsockfd, buffer, BUFFSIZE, 0);
-		if(n < 0) syserr("can't receive from client");
+		if(n < 0) syserr("can't receive files from peer");
 		if(strcmp(buffer, "EndOfList") == 0) break;
 		curr -> clientIP = clientIP;
 		curr -> portnum = clientPort;
