@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
+#include <dirent.h>
 #define BUFFSIZE 256
 
 void syserr(char *msg) { perror(msg); exit(-1); }
@@ -16,6 +17,18 @@ void ftpcomm(int newsockfd, char* buffer);
 void ClientCode(char *trackIP, int portTrac);
 void readandsend(int tempfd, int newsockfd, char* buffer);
 void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
+//List of files
+typedef struct l {
+
+  char * filename; //Tallies which slots are being used
+  uint32_t clientIP;
+  int portnum;
+  struct l * fl_next;
+} fileList;
+
+fileList * head = NULL;
+fileList * curr = NULL;
+fileList * tail = NULL;
 
 int main(int argc, char *argv[])
 {
@@ -169,7 +182,7 @@ void ftpcomm(int newsockfd, char* buffer)
 void ClientCode(char *trackHost, int portTrac)
 {
   //Socksfd: file descriptor; portno: port number; n: return values for read and write
-  int socksfd, portno, n, size, tempfd;
+  int socksfd, portno, n, size, listLen, tempfd;
   char input[70];
   char *filename;
   char *command;
@@ -204,6 +217,26 @@ void ClientCode(char *trackHost, int portTrac)
   printf("connect...\n");
   printf("Connection established. Waiting for commands...\n");
   
+  //Send Files 
+  DIR * directory;
+  struct dirent * filesInfo;
+  directory = opendir("./");
+  if(directory != NULL)
+  {
+  	while((filesInfo = readdir(directory)) != NULL)
+  	{
+  		memset(buffer, 0, sizeof(buffer));
+  		strcpy(buffer, filesInfo -> d_name);
+		n = send(socksfd, buffer, BUFFSIZE, 0);
+		if(n < 0) syserr("can't send filename to tracker");  		
+  	}
+	memset(buffer, 0, sizeof(buffer));
+	strcpy(buffer, "EndOfList");
+	n = send(socksfd, buffer, BUFFSIZE, 0);
+	if(n < 0) syserr("can't send EndOfList to tracker");  
+  }
+  
+  //Input Commands
   for(;;){
   	printf("%s:%d> ", trackHost, portno);
   	fgets(buffer, sizeof(input), stdin);
@@ -222,49 +255,53 @@ void ClientCode(char *trackHost, int portTrac)
   	}
   	else if(strcmp(command, "list") == 0)
   	{
+  		//Send command, get size of list
   		memset(buffer, 0, sizeof(buffer));
 		strcpy(buffer, "list");
 		//printf("sent in buffer: %s\n", buffer);
 		n = send(socksfd, buffer, BUFFSIZE, 0);
 		//printf("amount of data sent: %d\n", n);
-		if(n < 0) syserr("can't send to tracker");
+		if(n < 0) syserr("can't send command to tracker");
 		n = recv(socksfd, &size, sizeof(int), 0); 
-        if(n < 0) syserr("can't receive from tracker");
-        size = ntohl(size);        
-		if(size ==0) // check if file exists
-		{
-			printf("File not found\n");
-			break;
-		}
-		//printf("The size of the file to recieve is: %d\n", size);
-		tempfd = open("trackerlist.txt", O_CREAT | O_WRONLY, 0666);
-		recvandwrite(tempfd, socksfd, size, buffer);
-		printf("%s\n", buffer);
-		remove("trackerlist.txt");
-		close(tempfd);	
-  	}
-  	else if(strcmp(command, "ls-remote") == 0)
-  	{
-  		memset(buffer, 0, sizeof(buffer));
-		strcpy(buffer, "ls");
-		//printf("sent in buffer: %s\n", buffer);
-		n = send(socksfd, buffer, BUFFSIZE, 0);
-		//printf("amount of data sent: %d\n", n);
-		if(n < 0) syserr("can't send to server");
-		n = recv(socksfd, &size, sizeof(int), 0); 
-        if(n < 0) syserr("can't receive from server");
-        size = ntohl(size);        
-		if(size ==0) // check if file exists
-		{
-			printf("File not found\n");
-			break;
-		}
-		//printf("The size of the file to recieve is: %d\n", size);
-		tempfd = open("remotelist.txt", O_CREAT | O_WRONLY, 0666);
-		recvandwrite(tempfd, socksfd, size, buffer);
-		printf("%s\n", buffer);
-		remove("remotelist.txt");
-		close(tempfd);	
+        if(n < 0) syserr("can't receive size of list from tracker");
+        listLen = ntohl(size);
+        
+        //Make the List
+        int i;
+        for(i=1; i<=listLen; i++)
+        {
+        	curr = (fileList *)malloc(sizeof(fileList));
+        	n = recv(socksfd, &buffer, BUFFSIZE, 0); 
+    		if(n < 0) syserr("can't receive filename from tracker");
+    		strcpy(curr -> filename, buffer);
+    		uint32_t cIP;
+    		n = recv(socksfd, &cIP, sizeof(uint32_t), 0); 
+    		if(n < 0) syserr("can't receive IP from tracker");
+    		curr -> clientIP = ntohl(cIP);
+    		int cP;
+    		n = recv(socksfd, &cP, sizeof(int), 0); 
+    		if(n < 0) syserr("can't receive port from tracker");
+    		curr -> portnum = ntohl(cP);
+    		curr -> fl_next = NULL;
+        	if(tail == NULL)
+        	{
+        		tail = curr;
+        		head = curr;
+        	}
+        	else
+        	{
+				tail -> fl_next = curr;
+				tail = curr;
+        	}
+        } 
+        
+        //Print out list to console
+        curr = head;
+        for(i=1; i<=listLen; i++)
+        {
+        	printf("[%d] %s %d:%d\n", i, curr -> filename, curr -> clientIP, curr -> portnum);
+        	curr = curr -> fl_next;
+        }
   	}
   	else if(strcmp(command, "exit") == 0)
   	{

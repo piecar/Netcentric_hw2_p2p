@@ -1,8 +1,8 @@
-all:	 myftpserver
+all:	 tracker
 
-myftpserver: myftpserver.c
+tracker: tracker.c
 	gcc -Wall $< -o $@
 
 clean:
-	rm -f myftpserver *.o *~ core
+	rm -f tracker *.o *~ core
 

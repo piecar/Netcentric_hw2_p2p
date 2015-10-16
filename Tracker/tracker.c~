@@ -20,7 +20,7 @@ typedef struct l {
   char * filename; //Tallies which slots are being used
   uint32_t clientIP;
   int portnum;
-  struct l* fl_next;
+  struct l * fl_next;
 } fileList;
 
 fileList * head = NULL;
@@ -110,15 +110,17 @@ void * trccomm(void * s)
 	//Populate list with client files, IP and port
 	pthread_mutex_lock(&llock);
 	for(;;)
-	{
+	{	
+		curr = (fileList *)malloc(sizeof(fileList));
+		
 	    memset(buffer, 0, BUFFSIZE);
 		n = recv(newsockfd, buffer, BUFFSIZE, 0);
 		if(n < 0) syserr("can't receive from client");
-		if(strcmp(buffer, "EndOfList") != 0) break;
-		curr = (fileList *)malloc(sizeof(fileList));
+		if(strcmp(buffer, "EndOfList") == 0) break;
 		curr -> clientIP = clientIP;
 		curr -> portnum = clientPort;
 		strcpy(curr -> filename, buffer);
+		curr -> fl_next = NULL;
 		
 		if(tail == NULL)
 		{
@@ -162,62 +164,51 @@ void * trccomm(void * s)
 		    	if(n < 0) syserr("couldn't send clientIP to client");
 				int cP = htonl(clientPort); 
 				n = send(newsockfd, &cP, sizeof(int), 0);
-		    	if(n < 0) syserr("couldn't send clientIP to client");
+		    	if(n < 0) syserr("couldn't send clientPort to client");
 		    	
 		    	curr = curr -> fl_next;
 			}
+			pthread_mutex_unlock(&llock);
 			//readandsend(tempfd, newsockfd, buffer);
 			//close(tempfd);			
 		}
 		
 		if(strcmp(command, "exit") == 0)
 		{
-			printf("Connection to client shutting down\n");
+			printf("Connection to client %d shutting down\n", clientIP);
+			fileList * dltptr = NULL;
+			pthread_mutex_lock(&llock);
+			curr = head;
+			if(curr -> clientIP == clientIP)
+			{
+				do
+				{
+					head = curr -> fl_next;
+					free(curr);
+					curr = head;
+					if(head == NULL) break; // case: list emptied out
+				} while(curr -> clientIP == clientIP); 
+			}
+			else
+			{
+				while(curr -> fl_next -> clientIP != clientIP)
+				{
+					curr = curr -> fl_next;
+				}
+				do
+				{
+				dltptr = curr -> fl_next;
+				curr = curr -> fl_next -> fl_next;
+				free(dltptr);
+				if(curr -> fl_next == NULL) break; // case: list emptied out
+				} while(curr -> fl_next -> clientIP != clientIP);
+			}
+						
 			int i = 1;
 			i = htonl(i);
 			n = send(newsockfd, &i, sizeof(int), 0);
 		    if(n < 0) syserr("didn't send exit signal to client");
 			break;  // check to make sure it doesn't need to be exit
-		}
-		
-		if(strcmp(command, "get") == 0)
-		{
-			sscanf(buffer, "%*s%s", filename);
-			//printf("filename from client is: %s\n", filename);
-			//printf("size of filename is: %lu\n", sizeof(filename));
-			stat(filename, &filestats);
-			size = filestats.st_size;
-			//printf("Size of file to send: %d\n", size);
-            size = htonl(size);      
-			n = send(newsockfd, &size, sizeof(int), 0);
-		    if(n < 0) syserr("couldn't send size to client");
-			//printf("The amount of bytes sent for filesize is: %d\n", n);
-			tempfd = open(filename, O_RDONLY);
-			if(tempfd < 0) syserr("failed to open file");
-			readandsend(tempfd, newsockfd, buffer);
-			close(tempfd);			
-		}
-		if(strcmp(command, "put") == 0)
-		{
-			//Parse filename
-			sscanf(buffer, "%*s%s", filename);
-			//printf("filename from client is: %s\n", filename);
-			//printf("size of filename is: %lu\n", sizeof(filename));
-			//Receieve size of file
-			n = recv(newsockfd, &size, sizeof(int), 0); 
-        	if(n < 0) syserr("can't receive from server");
-        	size = ntohl(size);        
-			if(size ==0) // check if file exists
-			{
-				printf("File not found\n");
-				break;
-			}
-			//printf("The size of the file to recieve is: %d\n", size);
-			//Receieve the file
-			tempfd = open(filename, O_CREAT | O_WRONLY, 0666);
-			if(tempfd < 0) syserr("failed to open the file");
-			recvandwrite(tempfd, newsockfd, size, buffer);
-			close(tempfd);
 		}
 	}
 	return 0;
