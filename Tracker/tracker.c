@@ -17,7 +17,7 @@ void recvandwrite(int tempfd, int newsockfd, int size, char* buffer);
 //Shared List
 typedef struct l {
 
-  char * filename; //Tallies which slots are being used
+  char * filename;
   uint32_t clientIP;
   int portnum;
   struct l * fl_next;
@@ -83,7 +83,7 @@ for(;;) {
   pthread_mutex_init(&llock, NULL); 
   if(pthread_create(&pthread, NULL, trccomm, (void *) s))
   	syserr("Thread was not created.\n");
-  close(sockfd);
+  //close(sockfd);
 }
   close(sockfd); 
   return 0;
@@ -91,40 +91,49 @@ for(;;) {
 
 void * trccomm(void * s)
 {
-	int n, size, tempfd, newsockfd, clientPort;
+	int n, size, newsockfd, clientPort;
 	uint32_t clientIP;
-    struct stat filestats;
-	char * filename;
+	char * fname;
 	char command[20];
     char buffer[256];
-	filename = malloc(sizeof(char)*BUFFSIZE);
 	
 	//Thread struct operations
 	sockStruct* sCInfo = (sockStruct *) s;
 	newsockfd = sCInfo -> nsock;
 	clientIP = sCInfo -> clientInfo -> sin_addr.s_addr;
-	clientPort = sCInfo -> clientInfo -> sin_port;
+	//clientPort = sCInfo -> clientInfo -> sin_port;
 	
 	//Populate list with client files, IP and port
 	pthread_mutex_lock(&llock);
+	
+	n = recv(newsockfd, &clientPort, sizeof(int), 0);
+	if(n < 0) syserr("can't receive files from peer");
+	int cliPort = ntohs(clientPort);
+	printf("Client Port is: %d\n", cliPort);
+	
+	// Get filenames from peer
 	for(;;)
 	{	
+    	memset(buffer, 0, BUFFSIZE);
 		curr = (fileList *)malloc(sizeof(fileList));
+		fname = malloc(sizeof(char)*BUFFSIZE);
+		curr -> portnum = clientPort;
+		curr -> clientIP = clientIP;
 		
-	    memset(buffer, 0, BUFFSIZE);
 		n = recv(newsockfd, buffer, BUFFSIZE, 0);
 		if(n < 0) syserr("can't receive files from peer");
 		if(strcmp(buffer, "EndOfList") == 0) break;
-		curr -> clientIP = clientIP;
-		curr -> portnum = clientPort;
-		strcpy(curr -> filename, buffer);
+		
+		sscanf(buffer, "%s", fname);
+		printf("Filename received is: %s\n", fname);
+		curr -> filename = fname;
 		curr -> fl_next = NULL;
 		
 		if(tail == NULL)
 		{
 		  tail = curr;
 		  head = curr;
-		  listLen++;
+		  listLen++;	
 		}
 		else
 		{
@@ -137,10 +146,10 @@ void * trccomm(void * s)
 	
 	for(;;)
 	{
-	    memset(buffer, 0, BUFFSIZE);
+	    memset(buffer, 0, BUFFSIZE); 
 		n = recv(newsockfd, buffer, BUFFSIZE, 0);
 		//printf("amount of data recieved: %d\n", n);
-		if(n < 0) syserr("can't receive from client");
+		if(n < 0) syserr("can't receive command from client");
 		sscanf(buffer, "%s", command);
 		//printf("message from client is: %s\n", buffer);
 		
@@ -155,6 +164,7 @@ void * trccomm(void * s)
 			{
 				memset(buffer, 0, BUFFSIZE);
 				strcpy(buffer, curr -> filename);
+  				printf("The filename is: %s\n", buffer);
 				n = send(newsockfd, &buffer, BUFFSIZE, 0);
 		    	if(n < 0) syserr("couldn't send filename to client");
 				int cIP = htonl(clientIP); 
@@ -201,6 +211,7 @@ void * trccomm(void * s)
 				if(curr -> fl_next == NULL) break; // case: list emptied out
 				} while(curr -> fl_next -> clientIP != clientIP);
 			}
+			pthread_mutex_unlock(&llock);
 						
 			int i = 1;
 			i = htonl(i);
