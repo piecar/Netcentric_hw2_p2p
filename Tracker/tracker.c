@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #define BUFFSIZE 256
 
@@ -101,7 +102,6 @@ void * trccomm(void * s)
 	sockStruct* sCInfo = (sockStruct *) s;
 	newsockfd = sCInfo -> nsock;
 	clientIP = sCInfo -> clientInfo -> sin_addr.s_addr;
-	//clientPort = sCInfo -> clientInfo -> sin_port;
 	
 	//Populate list with client files, IP and port
 	pthread_mutex_lock(&llock);
@@ -164,13 +164,13 @@ void * trccomm(void * s)
 			{
 				memset(buffer, 0, BUFFSIZE);
 				strcpy(buffer, curr -> filename);
-  				printf("The filename is: %s\n", buffer);
+  				//printf("The filename is: %s\n", buffer);
 				n = send(newsockfd, &buffer, BUFFSIZE, 0);
 		    	if(n < 0) syserr("couldn't send filename to client");
-				int cIP = htonl(clientIP); 
+				int cIP = htonl(curr -> clientIP); 
 				n = send(newsockfd, &cIP, sizeof(uint32_t), 0);
 		    	if(n < 0) syserr("couldn't send clientIP to client");
-				int cP = htonl(clientPort); 
+				int cP = htonl(curr -> portnum); 
 				n = send(newsockfd, &cP, sizeof(int), 0);
 		    	if(n < 0) syserr("couldn't send clientPort to client");
 		    	
@@ -183,31 +183,40 @@ void * trccomm(void * s)
 		
 		if(strcmp(command, "exit") == 0)
 		{
-			printf("Connection to client %d shutting down\n", clientIP);
+			int cport;
+			n = recv(newsockfd, &cport, sizeof(int), 0);
+			if(n < 0) syserr("can't receive files from peer");
+			
+        	char peerAddr[INET_ADDRSTRLEN];
+			inet_ntop(AF_INET, &clientIP, peerAddr, INET_ADDRSTRLEN);
+			printf("Connection to client %s shutting down\n", peerAddr);
 			fileList * dltptr = NULL;
+			
 			pthread_mutex_lock(&llock);
 			curr = head;
-			if(curr -> clientIP == clientIP)
+			if(curr -> clientIP == clientIP && curr -> portnum == cport)
 			{
 				do
 				{
 					head = curr -> fl_next;
 					free(curr);
 					curr = head;
+					listLen--;
 					if(head == NULL) break; // case: list emptied out
 				} while(curr -> clientIP == clientIP); 
 			}
 			else
 			{
-				while(curr -> fl_next -> clientIP != clientIP)
+				while(curr -> fl_next -> clientIP != clientIP && curr -> portnum != cport) 
 				{
 					curr = curr -> fl_next;
 				}
 				do
 				{
-				dltptr = curr -> fl_next;
-				curr = curr -> fl_next -> fl_next;
-				free(dltptr);
+					dltptr = curr -> fl_next;
+					curr = curr -> fl_next -> fl_next;
+					listLen--;
+					free(dltptr);
 				if(curr -> fl_next == NULL) break; // case: list emptied out
 				} while(curr -> fl_next -> clientIP != clientIP);
 			}
@@ -217,7 +226,7 @@ void * trccomm(void * s)
 			i = htonl(i);
 			n = send(newsockfd, &i, sizeof(int), 0);
 		    if(n < 0) syserr("didn't send exit signal to client");
-			break;  // check to make sure it doesn't need to be exit
+				break; 
 		}
 	}
 	return 0;
