@@ -148,7 +148,6 @@ void * trccomm(void * s)
 	{
 	    memset(buffer, 0, BUFFSIZE); 
 		n = recv(newsockfd, buffer, BUFFSIZE, 0);
-		//printf("amount of data recieved: %d\n", n);
 		if(n < 0) syserr("can't receive command from client");
 		sscanf(buffer, "%s", command);
 		printf("message from client is: %s\n", buffer);
@@ -167,21 +166,16 @@ void * trccomm(void * s)
   				printf("The filename sent to peer is: %s\n", buffer);
 				n = send(newsockfd, &buffer, BUFFSIZE, 0);
 		    	if(n < 0) syserr("couldn't send filename to client");
-				//printf("Run point 1\n");
 				int cIP = htonl(curr -> clientIP); 
 				n = send(newsockfd, &cIP, sizeof(uint32_t), 0);
 		    	if(n < 0) syserr("couldn't send clientIP to client");
-				//printf("Run point 2\n");
 				int cP = htonl(curr -> portnum); 
 				n = send(newsockfd, &cP, sizeof(int), 0);
 		    	if(n < 0) syserr("couldn't send clientPort to client");
-				//printf("Run point 3\n");
 		    	
 		    	curr = curr -> fl_next;
 			}
 			pthread_mutex_unlock(&llock);
-			//readandsend(tempfd, newsockfd, buffer);
-			//close(tempfd);			
 		}
 		
 		if(strcmp(command, "exit") == 0)
@@ -214,16 +208,12 @@ void * trccomm(void * s)
 			}
 			else
 			{
-				while(curr -> fl_next -> clientIP != clientIP && curr -> fl_next -> portnum != cport) 
+				while(!(curr -> fl_next -> clientIP == clientIP && curr -> fl_next -> portnum == cport)) 
 				{
 					curr = curr -> fl_next;
 				}
 				do
 				{
-					printf("clienIP to search is: %d\n", clientIP);
-					printf("port to search is: %d\n", ntohs(cport));
-					printf("clienIP of curr next at start of do is: %d\n", curr -> fl_next -> clientIP);
-					printf("portnum of curr next at start of do is: %d\n", ntohs(curr -> fl_next -> portnum));
 					dltptr = curr -> fl_next;
 					curr -> fl_next = curr -> fl_next -> fl_next;
 					listLen--;
@@ -234,16 +224,8 @@ void * trccomm(void * s)
 						tail = curr;
 						break;					
 					}
-					printf("clienIP of curr next at end of do is: %d\n", curr -> fl_next -> clientIP);
-					printf("portnum of curr next at end of do is: %d\n", ntohs(curr -> fl_next -> portnum));
 				} while(curr -> fl_next -> clientIP == clientIP && curr -> fl_next -> portnum == cport);
 			}
-			
-			printf("the list length is: %d\n", listLen);
-			if(head == NULL) {printf("head is null\n");
-			}
-			else{ 
-				printf("head filename is: %s, portNum is: %d\n", head -> filename, ntohs(head -> portnum));
 			}
 			pthread_mutex_unlock(&llock);
 						
@@ -268,12 +250,10 @@ void readandsend(int tempfd, int newsockfd, char* buffer)
 			break;
 
 		if (bytes_read < 0) syserr("error reading file");
-		//printf("The amount of bytes read is: %d\n", bytes_read); 
 		
 		int total = 0;
 		int n;
 		int bytesleft = bytes_read;
-		//printf("The buffer is: \n%s", buffer);
 		while(total < bytes_read)
 		{
 			n = send(newsockfd, buffer+total, bytesleft, 0);
@@ -282,7 +262,6 @@ void readandsend(int tempfd, int newsockfd, char* buffer)
 			   syserr("error sending file"); 
 			   break;
 			}
-			//printf("The amount of bytes sent is: %d\n", n);
 			total += n;
 			bytesleft -= n;
 		}

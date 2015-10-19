@@ -188,7 +188,6 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   		{
 	  		memset(buffer, 0, sizeof(buffer));
 	  		strcpy(buffer, filesInfo -> d_name);
-	  		printf("File sent to tracker: %s\n", filesInfo -> d_name);
 			n = send(socksfd, buffer, BUFFSIZE, 0);
 			if(n < 0) syserr("can't send filename to tracker");
 		}  		
@@ -221,28 +220,23 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   		//Send command, get size of list
   		memset(buffer, 0, sizeof(buffer));
 		strcpy(buffer, "list");
-		//printf("sent in buffer: %s\n", buffer);
 		n = send(socksfd, buffer, BUFFSIZE, 0);
-		printf("amount of data sent: %d\n", n);
 		if(n < 0) syserr("can't send command to tracker");
 		n = recv(socksfd, &size, sizeof(int), 0); 
         if(n < 0) syserr("can't receive size of list from tracker");
         listLen = ntohl(size);
-  		printf("list length: %d\n", listLen);
         
         //Make the List POSSIBLE MEM LEAK
         head = curr = tail = NULL;
         int i;
         for(i=1; i<=listLen; i++)
         {
-  			//printf("start of loop number: %d\n", i);
         	curr = (fileList *)malloc(sizeof(fileList));
   			filename = malloc(sizeof(char)*sizeof(buffer));
         	n = recv(socksfd, &buffer, BUFFSIZE, 0); 
     		if(n < 0) syserr("can't receive filename from tracker");
     		sscanf(buffer, "%s", filename);
     		curr -> filename = filename;
-  			printf("The filename is: %s\n", curr -> filename);
   			
     		uint32_t cIP;
     		n = recv(socksfd, &cIP, sizeof(uint32_t), 0); 
@@ -253,7 +247,6 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
     		n = recv(socksfd, &cP, sizeof(int), 0); 
     		if(n < 0) syserr("can't receive port from tracker");
     		curr -> portnum = ntohl(cP);
-    		//printf("Port# recv is: %d\n", curr -> portnum);
     		
     		curr -> fl_next = NULL;
         	if(tail == NULL)
@@ -283,17 +276,14 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   	{
   		memset(buffer, 0, sizeof(buffer));
 		strcpy(buffer, "exit");
-		printf("sending command to tracker: %s\n", buffer);
 		n = send(socksfd, buffer, BUFFSIZE, 0);
 		if(n < 0) syserr("can't send command to tracker");
-		printf("sending port to tracker: %d\n", cliP);
   		n = send(socksfd, &cliP, sizeof(int), 0);
 		if(n < 0) syserr("can't send portnum to tracker");
 		n = recv(socksfd, &size, sizeof(int), 0);
         size = ntohl(size);  
         if(n < 0) syserr("can't receive exit signal from server");
         
-		//printf("size was %d from server\n", size);
 		if(size)
 		{
 			printf("Connection to server terminated\n");
@@ -310,7 +300,6 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   		//Get input, search for file  		
   		filename = malloc(sizeof(char)*sizeof(buffer));
   		strcpy(filename, strtok(NULL, " "));
-  		//printf("The filename is: %s\n", filename);
   		int index = atoi(filename);
   		free(filename);
   		if(listLen <= index) syserr("Index too large for list");
@@ -324,7 +313,7 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   	} 
   	else
   	{
-  		printf("Correct commmands are: 'ls-local', 'ls-remote', 'get <filename>' and 				'put <filename>, 'exit''\n");
+  		printf("Correct commmands are: 'ls-local', 'download <file index>', 				'list', 'exit'\n");
   	}  	
   }
   close(socksfd);
@@ -369,9 +358,7 @@ void peer2peer(uint32_t cIP, int cP, char * filen)
 	//Get the file
 	memset(buffer, 0, sizeof(buffer));
 	strcpy(buffer, filename);
-	printf("filename sent to peer is: %s\n", buffer);
 	n = send(sockfd, buffer, BUFFSIZE, 0);
-	//printf("amount of data sent: %d\n", n);
 	if(n < 0) syserr("can't send filename to peer");
 	n = recv(sockfd, &size, sizeof(int), 0); 
     if(n < 0) syserr("can't receive size of file from peer");
