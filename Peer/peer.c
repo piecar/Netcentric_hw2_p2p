@@ -13,7 +13,7 @@
 #define BUFFSIZE 256
 
 void syserr(char *msg) { perror(msg); exit(-1); }
-void ftpcomm(int newsockfd, char* buffer);
+void serverRoutine(int newsockfd, char* buffer);
 void ClientCode(char *trackIP, int portTrac, int portClient);
 void peer2peer(uint32_t cIP, int cP, char * filen);
 void readandsend(int tempfd, int newsockfd, char* buffer);
@@ -64,36 +64,41 @@ int main(int argc, char *argv[])
     syserr("can't bind");
   printf("bind socket to port %d...\n", portClient);
 
-  listen(sockfd, 5);
-  //ClientCode(argv[1], portTrac, portClient);
-  //printf("does this run?\n");
-  int hasClRun =0;	 
-
-for(;;) {
+  listen(sockfd, 5); 
+  //Fork Client & Servers
    	pid = fork();
    	if (pid < 0) syserr("Error on fork");
    	if (pid == 0)
    	{
-   		hasClRun = 1;
-	  	printf("wait on port %d...\n", portClient);
-	  	addrlen = sizeof(clt_addr); 
-	  	newsockfd = accept(sockfd, (struct sockaddr*)&clt_addr, &addrlen);
-	  	if(newsockfd < 0) syserr("can't accept"); 
-		ftpcomm(newsockfd, buffer);
-		close(newsockfd);
+		for(;;) {
+		  printf("wait on port %d...\n", portClient);
+		  addrlen = sizeof(clt_addr); 
+		  newsockfd = accept(sockfd, (struct sockaddr*)&clt_addr, &addrlen);
+		  if(newsockfd < 0) syserr("can't accept"); 
+		  
+		  pid = fork();
+		   if (pid < 0)
+			 syserr("Error on fork");
+		   if (pid == 0)
+		   {
+			 close(sockfd);
+			 serverRoutine(newsockfd, buffer);
+			 exit(0);
+		   }
+		   else
+			 close(newsockfd);
+		}
    	}
     else
     {
-		if(hasClRun == 0) 
-			ClientCode(argv[1], portTrac, portClient);
-     	close(sockfd);
+		ClientCode(argv[1], portTrac, portClient);
+		close(sockfd);
     }
-}
   close(sockfd); 
   return 0;
 }
 
-void ftpcomm(int newsockfd, char* buffer)
+void serverRoutine(int newsockfd, char* buffer)
 {
 	int n, size, tempfd;
     struct stat filestats;
@@ -226,6 +231,7 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   		printf("list length: %d\n", listLen);
         
         //Make the List POSSIBLE MEM LEAK
+        head = curr = tail = NULL;
         int i;
         for(i=1; i<=listLen; i++)
         {
@@ -278,7 +284,7 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
   		memset(buffer, 0, sizeof(buffer));
 		strcpy(buffer, "exit");
 		printf("sending command to tracker: %s\n", buffer);
-		n = send(socksfd, buffer, strlen(buffer), 0);
+		n = send(socksfd, buffer, BUFFSIZE, 0);
 		if(n < 0) syserr("can't send command to tracker");
 		printf("sending port to tracker: %d\n", cliP);
   		n = send(socksfd, &cliP, sizeof(int), 0);
@@ -291,7 +297,7 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
 		if(size)
 		{
 			printf("Connection to server terminated\n");
-			exit(0);
+			break;
 		}
 		else
 		{
@@ -327,11 +333,9 @@ void ClientCode(char *trackHost, int portTrac, int portClient)
 void peer2peer(uint32_t cIP, int cP, char * filen)
 {
 	int sockfd, portno, n, size, tempfd;
-	char input[70];
 	char *filename;
 	struct hostent* server; // server info
 	struct sockaddr_in serv_addr; //server address info
-	struct stat filestats;
 	char buffer[256];
 	char peerAddr[INET_ADDRSTRLEN];
 	

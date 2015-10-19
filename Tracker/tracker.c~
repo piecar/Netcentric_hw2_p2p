@@ -151,7 +151,7 @@ void * trccomm(void * s)
 		//printf("amount of data recieved: %d\n", n);
 		if(n < 0) syserr("can't receive command from client");
 		sscanf(buffer, "%s", command);
-		//printf("message from client is: %s\n", buffer);
+		printf("message from client is: %s\n", buffer);
 		
 		if(strcmp(command, "list") == 0)
 		{
@@ -164,15 +164,18 @@ void * trccomm(void * s)
 			{
 				memset(buffer, 0, BUFFSIZE);
 				strcpy(buffer, curr -> filename);
-  				//printf("The filename is: %s\n", buffer);
+  				printf("The filename sent to peer is: %s\n", buffer);
 				n = send(newsockfd, &buffer, BUFFSIZE, 0);
 		    	if(n < 0) syserr("couldn't send filename to client");
+				//printf("Run point 1\n");
 				int cIP = htonl(curr -> clientIP); 
 				n = send(newsockfd, &cIP, sizeof(uint32_t), 0);
 		    	if(n < 0) syserr("couldn't send clientIP to client");
+				//printf("Run point 2\n");
 				int cP = htonl(curr -> portnum); 
 				n = send(newsockfd, &cP, sizeof(int), 0);
 		    	if(n < 0) syserr("couldn't send clientPort to client");
+				//printf("Run point 3\n");
 		    	
 		    	curr = curr -> fl_next;
 			}
@@ -202,23 +205,45 @@ void * trccomm(void * s)
 					free(curr);
 					curr = head;
 					listLen--;
-					if(head == NULL) break; // case: list emptied out
-				} while(curr -> clientIP == clientIP); 
+					if(head == NULL)
+					{
+						tail = NULL;
+						break; // case: list emptied out
+					}
+				} while(curr -> clientIP == clientIP && curr -> portnum == cport); 
 			}
 			else
 			{
-				while(curr -> fl_next -> clientIP != clientIP && curr -> portnum != cport) 
+				while(curr -> fl_next -> clientIP != clientIP && curr -> fl_next -> portnum != cport) 
 				{
 					curr = curr -> fl_next;
 				}
 				do
 				{
+					printf("clienIP to search is: %d\n", clientIP);
+					printf("port to search is: %d\n", ntohs(cport));
+					printf("clienIP of curr next at start of do is: %d\n", curr -> fl_next -> clientIP);
+					printf("portnum of curr next at start of do is: %d\n", ntohs(curr -> fl_next -> portnum));
 					dltptr = curr -> fl_next;
-					curr = curr -> fl_next -> fl_next;
+					curr -> fl_next = curr -> fl_next -> fl_next;
 					listLen--;
 					free(dltptr);
-				if(curr -> fl_next == NULL) break; // case: list emptied out
-				} while(curr -> fl_next -> clientIP != clientIP);
+					dltptr = NULL;
+					if(curr -> fl_next == NULL)
+					{
+						tail = curr;
+						break;					
+					}
+					printf("clienIP of curr next at end of do is: %d\n", curr -> fl_next -> clientIP);
+					printf("portnum of curr next at end of do is: %d\n", ntohs(curr -> fl_next -> portnum));
+				} while(curr -> fl_next -> clientIP == clientIP && curr -> fl_next -> portnum == cport);
+			}
+			
+			printf("the list length is: %d\n", listLen);
+			if(head == NULL) {printf("head is null\n");
+			}
+			else{ 
+				printf("head filename is: %s, portNum is: %d\n", head -> filename, ntohs(head -> portnum));
 			}
 			pthread_mutex_unlock(&llock);
 						
